@@ -6,9 +6,9 @@ from matricesGenerator import getI2E, getB2E, edgehash, area
 
 def main():
     # Open the input .txt file and read the node coordinates
-    main = np.loadtxt('main.txt')
-    flap = np.loadtxt('slat.txt')
-    slat = np.loadtxt('flap.txt')
+    main = np.loadtxt('Airfoil Geometries/main.txt')
+    flap = np.loadtxt('Airfoil Geometries/flap.txt')
+    slat = np.loadtxt('Airfoil Geometries/slat.txt')
 
     # convert geometries .txt to .geo
     txt2geo(main, flap, slat)

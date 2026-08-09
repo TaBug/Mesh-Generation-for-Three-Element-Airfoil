@@ -12,9 +12,9 @@ def msh2gri(fnameInput, fnameOutput):
     with open(fnameInput, "r") as f:
         lines = f.readlines()
 
-    maintxt = np.loadtxt('main.txt')
-    slat = np.loadtxt('flap.txt')
-    flap = np.loadtxt('slat.txt')
+    maintxt = np.loadtxt('Airfoil Geometries/main.txt')
+    flap = np.loadtxt('Airfoil Geometries/flap.txt')
+    slat = np.loadtxt('Airfoil Geometries/slat.txt')
     refactor = 5
 
     # output .gri file
