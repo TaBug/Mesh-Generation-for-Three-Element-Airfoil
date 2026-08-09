@@ -1,6 +1,6 @@
 import numpy as np
-from matricesGenerator import readgri, genGri, getI2E, getB2E, edgehash, area, getF2V
-from spline import slapToBoundary
+from matrices_generator import readgri, genGri, getI2E, getB2E, edgehash, area, getF2V
+from spline.spline import slapToBoundary
 
 
 def localRefine(x, y, r, fnameInput, fnameOutputRefine, fnameOutputSmooth):
@@ -313,16 +313,16 @@ def localRefine(x, y, r, fnameInput, fnameOutputRefine, fnameOutputSmooth):
 
 def main():
     # refine trailing edge
-    localRefine(1, 0, 0.1, 'all.gri', 'localRefinedAllTrail.gri', 'localSmoothedAllTrail.gri')
+    localRefine(1, 0, 0.1, 'gri/all.gri', 'gri/refined_local_all_trail.gri', 'gri/smoothed_local_all_trail.gri')
 
     # refine leading edge
-    #localRefine(0, 0, 0.1, 'all.gri', 'localRefinedAllLead.gri', 'localSmoothedAllLead.gri')
+    #localRefine(0, 0, 0.1, 'gri/all.gri', 'gri/refined_local_all_lead.gri', 'gri/smoothed_local_all_lead.gri')
 
     # refine leading edge
-    localRefine(0, 0, 0.1, 'localSmoothedAllTrail.gri', 'localRefinedAll.gri', 'localSmoothedAll.gri')
-    #localRefine(0, 0, 0.1, 'localRefinedAll.gri', 'localRefinedAll.gri', 'localSmoothedAll.gri')
+    localRefine(0, 0, 0.1, 'gri/smoothed_local_all_trail.gri', 'gri/refined_local_all.gri', 'gri/smoothed_local_all.gri')
+    #localRefine(0, 0, 0.1, 'gri/refined_local_all.gri', 'gri/refined_local_all.gri', 'gri/smoothed_local_all.gri')
     # for fun
-    #localRefine(99, 99, 50, 'all.gri', 'shitRefined.gri', 'shitSmoothed.gri')
+    #localRefine(99, 99, 50, 'gri/all.gri', 'gri/shitRefined.gri', 'gri/shitSmoothed.gri')
 
 
 if __name__ == "__main__":

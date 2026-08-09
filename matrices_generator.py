@@ -1,7 +1,29 @@
+import os
+
 import numpy as np
 
 
 def readgri(fname):
+    """Parse a .gri mesh file into a Mesh dict.
+
+    Reads node coordinates, boundary edge groups (with names), and
+    triangular element connectivity from the given .gri file.
+
+    Parameters
+    ----------
+    fname : str
+        Path to the .gri file.
+
+    Returns
+    -------
+    dict
+        Mesh with keys:
+        'V' (Nn x 2 array of node coordinates),
+        'E' (Ne x 3 array of triangle vertex indices, 1-based),
+        'B' (list of arrays, one per boundary group, each row a 1-based
+             2-node edge),
+        'Bname' (list of boundary group name strings).
+    """
     f = open(fname, 'r')
     Nn, Ne, dim = [int(s) for s in f.readline().split()]
     # read vertices
@@ -31,6 +53,23 @@ def readgri(fname):
 
 
 def genGri(fnameOutput, V, E, B):
+    """Write a mesh out to a .gri file.
+
+    Inverse of readgri(): serializes node coordinates, boundary edge
+    groups, and triangular element connectivity into the .gri text
+    format.
+
+    Parameters
+    ----------
+    fnameOutput : str
+        Path of the .gri file to write.
+    V : ndarray
+        Nn x 2 array of node coordinates.
+    E : ndarray
+        Ne x 3 array of triangle vertex indices (1-based).
+    B : list of ndarray
+        One array per boundary group, each row a 1-based 2-node edge.
+    """
     f = open(fnameOutput, 'w')
     nNode = len(V)
     nElemTot = len(E)
@@ -54,6 +93,25 @@ def genGri(fnameOutput, V, E, B):
 
 # map from interior faces to elements
 def getI2E(fnameInput, toOutput):
+    """Build the interior-face-to-element (I2E) connectivity matrix.
+
+    Loads the mesh from fnameInput, then for every element edge that
+    is not part of a boundary group, finds the neighboring element
+    that shares it and records both sides' element/local-edge index.
+
+    Parameters
+    ----------
+    fnameInput : str
+        Path to the .gri file to read.
+    toOutput : bool
+        If True, also write the result to 'I2E.txt'.
+
+    Returns
+    -------
+    ndarray
+        Array of rows [elemL, faceL, elemR, faceR] (1-based indices),
+        one per interior face.
+    """
     Mesh = readgri(fnameInput)
     E = Mesh['E']
     B = Mesh['B']
@@ -94,7 +152,8 @@ def getI2E(fnameInput, toOutput):
                 continue
 
     if toOutput:
-        with open('I2E.txt', 'w') as f:
+        inputName = os.path.splitext(os.path.basename(fnameInput))[0]
+        with open(f'matrices/I2E_{inputName}.txt', 'w') as f:
             for i in range(len(output)):
                 f.write(f'{int(output[i][0])} {int(output[i][1])} {int(output[i][2])} {int(output[i][3])}\n')
             f.close()
@@ -103,6 +162,25 @@ def getI2E(fnameInput, toOutput):
 
 
 def getB2E(fnameInput, toOutput):
+    """Build the boundary-face-to-element (B2E) connectivity matrix.
+
+    Loads the mesh from fnameInput, then for every boundary edge in
+    every boundary group, finds the element it belongs to and its
+    local edge index within that element.
+
+    Parameters
+    ----------
+    fnameInput : str
+        Path to the .gri file to read.
+    toOutput : bool
+        If True, also write the result to 'B2E.txt'.
+
+    Returns
+    -------
+    ndarray
+        Array of rows [elem, face, bgroup] (1-based indices), one per
+        boundary face.
+    """
     Mesh = readgri(fnameInput)
     E = Mesh['E']
     B = Mesh['B']
@@ -133,7 +211,8 @@ def getB2E(fnameInput, toOutput):
                 output = np.append(output, newB, axis=0)
 
     if toOutput:
-        with open('B2E.txt', 'w') as f:
+        inputName = os.path.splitext(os.path.basename(fnameInput))[0]
+        with open(f'matrices/B2E_{inputName}.txt', 'w') as f:
             for i in range(len(output)):
                 f.write(f'{int(output[i][0])} {int(output[i][1])} {int(output[i][2])}\n')
             f.close()
@@ -142,6 +221,30 @@ def getB2E(fnameInput, toOutput):
 
 
 def edgehash(fnameInput, toOutput):
+    """Compute unit normal vectors and lengths for interior and boundary faces.
+
+    Loads the mesh and its I2E/B2E connectivity, then for each
+    interior face and each boundary face computes the edge length and
+    an outward-ish unit normal (rotated tangent) from the edge's two
+    endpoint coordinates.
+
+    Parameters
+    ----------
+    fnameInput : str
+        Path to the .gri file to read.
+    toOutput : bool
+        If True, also write interior normals to 'In.txt' and boundary
+        normals to 'Bn.txt' (written incrementally during the loops).
+
+    Returns
+    -------
+    tuple of ndarray
+        (In, Bn, lIn, lBn):
+        In  -- interior face unit normals (Nin x 2),
+        Bn  -- boundary face unit normals (Nbn x 2),
+        lIn -- interior face lengths (Nin,),
+        lBn -- boundary face lengths (Nbn,).
+    """
     Mesh = readgri(fnameInput)
     E = Mesh['E']
     V = Mesh['V']
@@ -151,6 +254,8 @@ def edgehash(fnameInput, toOutput):
     Bn = np.array([[]])
     lIn = np.array([])
     lBn = np.array([])
+    
+    inputName = os.path.splitext(os.path.basename(fnameInput))[0]
 
     for iface, face in enumerate(I2E):
         elemL = face[0]
@@ -177,7 +282,7 @@ def edgehash(fnameInput, toOutput):
         lIn = np.append(lIn, l)
 
         if toOutput:
-            with open('In.txt', 'w') as f:
+            with open(f'matrices/In_{inputName}.txt', 'w') as f:
                 for Ini in In:
                     f.write(f'{Ini[0]} {Ini[1]}\n')
             f.close()
@@ -207,7 +312,7 @@ def edgehash(fnameInput, toOutput):
         lBn = np.append(lBn, l)
 
         if toOutput:
-            with open('Bn.txt', 'w') as f:
+            with open(f'matrices/Bn_{inputName}.txt', 'w') as f:
                 for Bni in Bn:
                     f.write(f'{Bni[0]} {Bni[1]}\n')
             f.close()
@@ -218,6 +323,24 @@ def edgehash(fnameInput, toOutput):
 # input: element matrix, node coordinate matrix
 # output: element area matrix (index = element index)
 def area(fnameInput, toOutput):
+    """Compute the signed area of every triangular element in a mesh.
+
+    Loads the mesh from fnameInput and evaluates the shoelace formula
+    for each triangle's three vertices.
+
+    Parameters
+    ----------
+    fnameInput : str
+        Path to the .gri file to read.
+    toOutput : bool
+        If True, write one area per line to 'area.txt'.
+
+    Returns
+    -------
+    None
+        (Areas are computed into a local array but not returned;
+        only written to file when toOutput is True.)
+    """
     Mesh = readgri(fnameInput)
     E = Mesh['E']
     V = Mesh['V']
@@ -238,6 +361,25 @@ def area(fnameInput, toOutput):
 
 
 def getF2V(fnameInput, toOutput):
+    """Build the face-to-vertex (F2V) matrix for all interior and boundary faces.
+
+    Loads the mesh and its I2E/B2E connectivity, then for each face
+    (interior first, then boundary) maps the (element, local edge)
+    pair to its two global node indices.
+
+    Parameters
+    ----------
+    fnameInput : str
+        Path to the .gri file to read.
+    toOutput : bool
+        If True, also write the result to 'F2V.txt'.
+
+    Returns
+    -------
+    ndarray
+        Array of rows [node1, node2] (global node indices), interior
+        faces followed by boundary faces, in I2E/B2E order.
+    """
     # read fnameInput
     mesh = readgri(fnameInput)
     E = mesh['E']
@@ -272,7 +414,8 @@ def getF2V(fnameInput, toOutput):
             output = np.append(output, newFace, axis=0)
 
     if toOutput:
-        with open('F2V.txt', 'w') as f:
+        inputName = os.path.splitext(os.path.basename(fnameInput))[0]
+        with open(f'matrices/F2V_{inputName}.txt', 'w') as f:
             for face in output:
                 f.write(f'{face[0]} {face[1]}\n')
         f.close()
@@ -281,12 +424,18 @@ def getF2V(fnameInput, toOutput):
 
 
 def main():
-    getI2E('localSmoothedAllTrail.gri', True)
-    getB2E('localRefinedAll.gri', True)
-    # edgehash('test.gri', False)
-    # area('test.gri', False)
-    #getF2V('localRefinedAllTrail.gri', True)
-    print(len(readgri('localRefinedAll.gri')['E']))
+    """Entry point: generate I2E/B2E connectivity files for sample meshes.
+
+    Runs getI2E on 'localSmoothedAllTrail.gri' and getB2E on
+    'localRefinedAll.gri', writing I2E.txt/B2E.txt, then prints the
+    element count of 'localRefinedAll.gri' as a sanity check.
+    """
+    getI2E('gri/test.gri', True)
+    getB2E('gri/test.gri', True)
+    edgehash('gri/test.gri', True)
+    area('gri/test.gri', False)
+    getF2V('gri/test.gri', True)
+    # print(len(readgri('localRefinedAll.gri')['E']))
 
 
 if __name__ == "__main__":

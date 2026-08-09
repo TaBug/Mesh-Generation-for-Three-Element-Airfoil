@@ -68,9 +68,9 @@ def txt2geo(maintxt, flap, slat):
 
 
 def main():
-    maintxt = np.loadtxt('main.txt')
-    slat = np.loadtxt('flap.txt')
-    flap = np.loadtxt('slat.txt')
+    maintxt = np.loadtxt('Airfoil Geometries/main.txt')
+    slat = np.loadtxt('Airfoil Geometries/slat.txt')
+    flap = np.loadtxt('Airfoil Geometries/flap.txt')
     txt2geo(maintxt, flap, slat)
 
 

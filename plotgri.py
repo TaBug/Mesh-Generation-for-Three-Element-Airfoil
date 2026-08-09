@@ -51,14 +51,15 @@ def plotmesh(Mesh, fname):
 
 # -----------------------------------------------------------
 def main():
-    #plotmesh(readgri('test.gri'), [])
-    #plotmesh(readgri('all.gri'), []);
-    #plotmesh(readgri('localRefinedAllTrail.gri'), []);
-    plotmesh(readgri('localSmoothedAllTrail.gri'), []);
-    plotmesh(readgri('localRefinedAll.gri'), []);
-    plotmesh(readgri('localSmoothedAll.gri'), []);
-    #plotmesh(readgri('shitSmoothed.gri'), []);
-    plotmesh(readgri('uniformRefinedAll.gri'), []);
+    # plotmesh(readgri('gri/test.gri'), [])
+    # plotmesh(readgri('gri/all.gri'), []);
+    # plotmesh(readgri('gri/refined_local_all_trail.gri'), []);
+    # plotmesh(readgri('gri/smoothed_local_all_trail.gri'), []);
+    # plotmesh(readgri('gri/refined_local_all.gri'), []);
+    plotmesh(readgri('gri/smoothed_local_all.gri'), []);
+    # #plotmesh(readgri('shitSmoothed.gri'), []);
+    # plotmesh(readgri('uniformRefinedAll.gri'), []);
+    # plotmesh(readgri('gri/refinement_uniform_all.gri'), []);
 
 
 if __name__ == "__main__":

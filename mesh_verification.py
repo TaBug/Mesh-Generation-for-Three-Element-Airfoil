@@ -1,6 +1,6 @@
 import numpy as np
 from plotgri import readgri
-from matricesGenerator import getI2E, getB2E, edgehash, area
+from matrices_generator import getI2E, getB2E, edgehash, area
 
 
 def meshTest(griFile):
@@ -23,13 +23,13 @@ def meshTest(griFile):
 
 
 def main():
-    ETest = meshTest('test.gri')
+    ETest = meshTest('gri/test.gri')
     print(f'The maximum magnitude of the error for test mesh = {np.max(abs(ETest))}')
-    EAll = meshTest('all.gri')
+    EAll = meshTest('gri/all.gri')
     print(f'The maximum magnitude of the error for coarse mesh = {np.max(abs(EAll))}')
-    EAllTrail = meshTest('localSmoothedAllTrail.gri')
+    EAllTrail = meshTest('gri/smoothed_local_all_trail.gri')
     print(f'The maximum magnitude of the error for coarse mesh = {np.max(abs(EAllTrail))}')
-    EAllAll = meshTest('localRefinedAll.gri')
+    EAllAll = meshTest('gri/refined_local_all.gri')
     print(f'The maximum magnitude of the error for coarse mesh = {np.max(abs(EAllAll))}')
 
 

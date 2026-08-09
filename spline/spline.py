@@ -51,13 +51,13 @@ def slapToBoundary(B, bgroup, ib):
 
     if bgroup == 1:
         bIndex = ib[0][0]
-        spline = np.load('spline_main.npy', allow_pickle=True)
+        spline = np.load('spline/spline_main.npy', allow_pickle=True)
     elif bgroup == 2:
         bIndex = ib[0][0] - len(B[0])
-        spline = np.load('spline_flap.npy', allow_pickle=True)
+        spline = np.load('spline/spline_flap.npy', allow_pickle=True)
     else:
         bIndex = ib[0][0] - len(B[0]) - len(B[1])
-        spline = np.load('spline_slat.npy', allow_pickle=True)
+        spline = np.load('spline/spline_slat.npy', allow_pickle=True)
     fx = spline[0]
     fy = spline[1]
     sArray = spline[2]
@@ -165,12 +165,12 @@ def spline2d(coord):
 
     fx = solveForCoeff(s, x, dxds)
     fy = solveForCoeff(s, y, dyds)
-    return np.array([fx, fy, s])
+    return np.array([fx, fy, s], dtype=object)
 
 
 def test():
     s_i = np.linspace(0, 2, 200)
-    f = np.load('spline_flap.npy', allow_pickle=True)
+    f = np.load('spline_main.npy', allow_pickle=True)
     fx = f[0]
     fy = f[1]
     s = f[2]
@@ -193,9 +193,9 @@ def test():
 
 
 def main():
-    maintxt = np.loadtxt('main.txt')
-    slat = np.loadtxt('flap.txt')
-    flap = np.loadtxt('slat.txt')
+    maintxt = np.loadtxt('geometries/main.txt')
+    slat = np.loadtxt('geometries/slat.txt')
+    flap = np.loadtxt('geometries/flap.txt')
     np.save('spline_main.npy', spline2d(maintxt))
     np.save('spline_slat.npy', spline2d(slat))
     np.save('spline_flap.npy', spline2d(flap))

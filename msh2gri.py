@@ -72,4 +72,4 @@ def msh2gri(fnameInput, fnameOutput):
 
 
 if __name__ == "__main__":
-    msh2gri('all.msh', 'all.gri')
+    msh2gri('msh Files/all.msh', 'gri Files/all.gri')

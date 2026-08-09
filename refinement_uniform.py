@@ -1,6 +1,6 @@
 import numpy as np
-from matricesGenerator import readgri, genGri, getI2E, getB2E, edgehash, area, getF2V
-from spline import slapToBoundary
+from matrices_generator import readgri, genGri, getI2E, getB2E, edgehash, area, getF2V
+from spline.spline import slapToBoundary
 
 
 def uniformRefine(fnameInput, fnameOutput):
@@ -96,7 +96,7 @@ def uniformRefine(fnameInput, fnameOutput):
 
 
 def main():
-    uniformRefine('localSmoothedAll.gri', 'uniformRefinedAll.gri')
+    uniformRefine('gri/smoothed_local_all.gri', 'gri/refined_uniform_all.gri')
 
 
 if __name__ == "__main__":
