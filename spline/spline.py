@@ -9,9 +9,10 @@ import matplotlib.pyplot as plt
 # order main, slat, flap -- see msh2gri.py -- so group 2 is the slat and group 3
 # is the flap. Getting this backwards silently projects nodes onto the wrong
 # element, a full chord away.
-SPLINE_FILES = {1: 'spline/spline_main.npy',
-                2: 'spline/spline_slat.npy',
-                3: 'spline/spline_flap.npy'}
+AIRFOIL_NAMES = {1: 'main', 2: 'slat', 3: 'flap'}
+
+SPLINE_FILES = {g: f'spline/spline_{name}.npy'
+                for g, name in AIRFOIL_NAMES.items()}
 
 # The curved boundary groups; the rest of the domain is the flat farfield.
 AIRFOIL_GROUPS = tuple(sorted(SPLINE_FILES))
@@ -190,11 +191,13 @@ def test():
 
 
 def main():
-    for name, g in (('main', 1), ('slat', 3), ('flap', 2)):
+    """Refit every airfoil spline from its point file."""
+    for g, name in sorted(AIRFOIL_NAMES.items()):
         pts = np.loadtxt(f'geometries/{name}.txt')
-        np.save(f'spline/spline_{name}.npy', spline2d(pts))
+        np.save(SPLINE_FILES[g], spline2d(pts))
+        print(f'group {g}: {name} -> {SPLINE_FILES[g]}')
 
 
 if __name__ == "__main__":
     main()
-    test()
+    # test()
