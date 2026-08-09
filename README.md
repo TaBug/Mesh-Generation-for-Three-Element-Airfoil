@@ -1,4 +1,4 @@
-# AE 623 Project 1 — Mesh Generation
+# Mesh Generation for Three-Element Airfoil
 
 Unstructured triangular mesh generation around the three-element airfoil, with
 cubic-spline boundary representation, local refinement with smoothing, uniform
