@@ -1,78 +1,111 @@
 import numpy as np
-from scipy import sparse
-from scipy.sparse import linalg
 import sympy as sp
-import matplotlib.pyplot as plt
+from scipy import sparse
 from scipy import integrate
+from scipy.sparse import linalg
+import matplotlib.pyplot as plt
+
+# Keyed by .gri boundary group index. The mesh writes the airfoil curves in the
+# order main, slat, flap -- see msh2gri.py -- so group 2 is the slat and group 3
+# is the flap. Getting this backwards silently projects nodes onto the wrong
+# element, a full chord away.
+SPLINE_FILES = {1: 'spline/spline_main.npy',
+                2: 'spline/spline_slat.npy',
+                3: 'spline/spline_flap.npy'}
+
+# The curved boundary groups; the rest of the domain is the flat farfield.
+AIRFOIL_GROUPS = tuple(sorted(SPLINE_FILES))
+
+_cache = {}
 
 
-# def l_i(p, x):
-#     if p == 0:
-#         l_ix = 1
-#     elif p == 1:
-#         l_ix = x
-#     elif p == 2:
-#         l_ix = 3 / 2 * x ** 2 - 1 / 2
-#     else:
-#         l_ix = 3 / 2 * x ** 3 - 1 / 2 * x
-#     return l_ix
-#
-#
-# def l_i_int(p, x):
-#     if p == 0:
-#         l_ix_int = x
-#     elif p == 1:
-#         l_ix_int = 1 / 2 * x ** 2
-#     elif p == 2:
-#         l_ix_int = 1 / 2 * x ** 3 - 1 / 2 * x
-#     else:
-#         l_ix_int = 5 / 8 * x ** 4 - 3 / 4 * x ** 2
-#     return l_ix_int
-#
-#
-# def quad(f, x1, x2):
-#     A = np.zeros([4, 2])
-#     x = np.array([x1, x2])
-#     b = np.zeros([4, 1])
-#     for i in range(2):
-#         for j in range(2):
-#             A[i, j] = l_i(i, x[j])
-#         b[i] = l_i_int(i, 1) - l_i_int(i, -1)
-#
-#     w = np.dot(np.linalg.pinv(A), b)
-#     output = 0
-#     t = sp.symbols('t')
-#     for q in range(len(w)):
-#         output += f.subs(t, )
+def _loadSpline(bgroup, nSample=40):
+    """Load, lambdify, and densely sample one airfoil spline (cached).
 
-def slapToBoundary(B, bgroup, ib):
-    if bgroup > 3:
-        print('Warning! Wrong boundary to manipulate')
+    Returns (sKnots, fx, fy, sSample, xySample), where fx[i]/fy[i] are fast
+    numeric callables for segment i and xySample is a dense point cloud used to
+    seed the nearest-point search.
+    """
+    if bgroup in _cache:
+        return _cache[bgroup]
+    if bgroup not in SPLINE_FILES:
+        raise ValueError(f'bgroup {bgroup} is not a curved airfoil boundary')
 
-    if bgroup == 1:
-        bIndex = ib[0][0]
-        spline = np.load('spline/spline_main.npy', allow_pickle=True)
-    elif bgroup == 2:
-        bIndex = ib[0][0] - len(B[0])
-        spline = np.load('spline/spline_flap.npy', allow_pickle=True)
-    else:
-        bIndex = ib[0][0] - len(B[0]) - len(B[1])
-        spline = np.load('spline/spline_slat.npy', allow_pickle=True)
-    fx = spline[0]
-    fy = spline[1]
-    sArray = spline[2]
-    s_i = sArray[5 * bIndex] + (sArray[5 * bIndex + 5] - sArray[5 * bIndex]) / 2
-    sIndex = np.argmax(sArray >= s_i)
-    fx_i = fx[sIndex - 1]
-    fy_i = fy[sIndex - 1]
-    s = sp.symbols('s')
-    x = fx_i.subs(s, s_i)
-    y = fy_i.subs(s, s_i)
-    coordNew = np.array([[x, y]])
-    return coordNew
+    spline = np.load(SPLINE_FILES[bgroup], allow_pickle=True)
+    sSym = sp.symbols('s')
+    fx = [sp.lambdify(sSym, e, 'numpy') for e in spline[0]]
+    fy = [sp.lambdify(sSym, e, 'numpy') for e in spline[1]]
+    sKnots = np.asarray(spline[2], dtype=float)
+
+    sSample, xySample = [], []
+    for i in range(len(sKnots) - 1):
+        lastSegment = (i == len(sKnots) - 2)
+        t = np.linspace(sKnots[i], sKnots[i + 1], nSample, endpoint=lastSegment)
+        sSample.append(t)
+        xySample.append(np.column_stack((fx[i](t), fy[i](t))))
+    sSample = np.concatenate(sSample)
+    xySample = np.concatenate(xySample)
+
+    _cache[bgroup] = (sKnots, fx, fy, sSample, xySample)
+    return _cache[bgroup]
+
+
+def evalSpline(bgroup, s):
+    """Evaluate the spline of one airfoil at arclength parameter s."""
+    sKnots, fx, fy, _, _ = _loadSpline(bgroup)
+    s = float(np.clip(s, sKnots[0], sKnots[-1]))
+    i = int(np.clip(np.searchsorted(sKnots, s) - 1, 0, len(fx) - 1))
+    return float(fx[i](s)), float(fy[i](s))
+
+
+def snapToBoundary(point, bgroup, tol=1e-12):
+    """Project a point onto the true spline geometry of an airfoil element.
+
+    Finds the nearest sampled point to seed a golden-section search on squared
+    distance over the bracketing arclength interval. Purely geometric, so it
+    works at any refinement level.
+
+    Parameters
+    ----------
+    point : array_like
+        (x, y) of the point to snap, e.g. an edge midpoint.
+    bgroup : int
+        Boundary group index: 1 = main, 2 = flap, 3 = slat.
+
+    Returns
+    -------
+    ndarray
+        (2,) array with the snapped coordinates.
+    """
+    sKnots, _, _, sSample, xySample = _loadSpline(bgroup)
+    p = np.asarray(point, dtype=float).ravel()[:2]
+
+    k = int(np.argmin(np.sum((xySample - p) ** 2, axis=1)))
+    a = sSample[max(k - 1, 0)]
+    b = sSample[min(k + 1, len(sSample) - 1)]
+
+    def d2(s):
+        x, y = evalSpline(bgroup, s)
+        return (x - p[0]) ** 2 + (y - p[1]) ** 2
+
+    phi = (np.sqrt(5.0) - 1.0) / 2.0
+    c, d = b - phi * (b - a), a + phi * (b - a)
+    fc, fd = d2(c), d2(d)
+    while (b - a) > tol:
+        if fc < fd:
+            b, d, fd = d, c, fc
+            c = b - phi * (b - a)
+            fc = d2(c)
+        else:
+            a, c, fc = c, d, fd
+            d = a + phi * (b - a)
+            fd = d2(d)
+
+    return np.array(evalSpline(bgroup, 0.5 * (a + b)))
 
 
 def solveForCoeff(s, x, dxds):
+    """Build the per-segment cubic polynomials from nodal values and slopes."""
     sSym = sp.symbols('s')
     f = []
     for i in range(len(s) - 1):
@@ -87,11 +120,10 @@ def solveForCoeff(s, x, dxds):
 
 
 def spline1d(x, s):
+    """Solve the tridiagonal system for the nodal slopes dx/ds."""
     n = len(s)
-    # Initialize A matrix
-    A = sparse.csr_matrix((n, n))
+    A = sparse.lil_matrix((n, n))
 
-    # First row and last row
     A1 = 2 * (s[-1] - s[-2] + s[1] - s[0])
     C1 = s[-1] - s[-2]
     Bn = s[-1] - s[-2]
@@ -104,101 +136,63 @@ def spline1d(x, s):
     D = np.zeros(n)
     for i in range(1, n - 1):
         delsi = s[i] - s[i - 1]
-        if i == 1:
-            delsim1 = s[-1] - s[-2]
-        else:
-            delsim1 = s[i - 1] - s[i - 2]
-        Ai = 2 * (delsim1 + delsi)
-        Bi = delsi
-        Ci = delsim1
-        D[i] = 3 * ((x[i] - x[i - 1]) * delsi / delsim1 + (x[i + 1] - x[i]) * delsim1 / delsi)
-        A[i, i - 1] = Bi
-        A[i, i] = Ai
-        A[i, i + 1] = Ci
-    dxds = linalg.spsolve(A, D)  # solution at all points
-    return dxds
+        delsim1 = s[i + 1] - s[i]
+        A[i, i - 1] = delsi
+        A[i, i] = 2 * (delsim1 + delsi)
+        A[i, i + 1] = delsim1
+        D[i] = 3 * ((x[i] - x[i - 1]) * delsi / delsim1
+                    + (x[i + 1] - x[i]) * delsim1 / delsi)
+
+    return linalg.spsolve(A.tocsr(), D)
 
 
 def spline2d(coord):
-    # extract x and y coordinates
-    x = coord[:, 0]
-    y = coord[:, 1]
+    """Fit an arclength-parameterized cubic spline through a set of points."""
+    x, y = coord[:, 0], coord[:, 1]
 
-    # estimate the arc-length parameter at the nodes using simple linear distance
-    s1 = 0
-    s = np.zeros(len(coord[:, 0]))
-    for i in range(len(coord[:, 0]) - 1):
-        si1 = s1 + np.sqrt((x[i + 1] - x[i]) ** 2 + (y[i + 1] - y[i]) ** 2)
-        s[i + 1] = si1
-        s1 = si1
+    s = np.zeros(len(x))
+    for i in range(len(x) - 1):
+        s[i + 1] = s[i] + np.hypot(x[i + 1] - x[i], y[i + 1] - y[i])
 
     sTrue = np.zeros(len(s))
-    L1 = np.Inf
-    dxds = spline1d(x, s)
-    dyds = spline1d(y, s)
+    L1 = np.inf
     while L1 > 1e-10:
-        # Spline x(s) and y(s) independently using the current estimate for S_i
         dxds = spline1d(x, s)
         dyds = spline1d(y, s)
 
-        # loop over the airfoil segments
         for i in range(len(s) - 1):
-            # Compute the true arc-length of the current curve
-            if i == 0:
-                dels_i = s[-1] - s[-2]
-            else:
-                dels_i = s[i] - s[i - 1]
-
-            xPrime_i0 = (dxds[i] - (x[i + 1] - x[i]) / dels_i) * dels_i
-            xPrime_i1 = (dxds[i + 1] - (x[i + 1] - x[i]) / dels_i) * dels_i
-            yPrime_i0 = (dyds[i] - (y[i + 1] - y[i]) / dels_i) * dels_i
-            yPrime_i1 = (dyds[i + 1] - (y[i + 1] - y[i]) / dels_i) * dels_i
+            dels_i = (s[-1] - s[-2]) if i == 0 else (s[i] - s[i - 1])
+            xp0 = (dxds[i] - (x[i + 1] - x[i]) / dels_i) * dels_i
+            xp1 = (dxds[i + 1] - (x[i + 1] - x[i]) / dels_i) * dels_i
+            yp0 = (dyds[i] - (y[i + 1] - y[i]) / dels_i) * dels_i
+            yp1 = (dyds[i + 1] - (y[i + 1] - y[i]) / dels_i) * dels_i
             f_i = lambda t: np.sqrt(
-                (x[i + 1] - x[i] + (1 - 4 * t + 3 * t ** 2) * xPrime_i0 + (-2 * t + 3 * t ** 2) * xPrime_i1) ** 2 + (
-                        y[i + 1] - y[i] + (1 - 4 * t + 3 * t ** 2) * yPrime_i0 + (
-                            -2 * t + 3 * t ** 2) * yPrime_i1) ** 2)
-            integral = integrate.quadrature(f_i, 0.0, 1.0)
-            sTrue[i + 1] = sTrue[i] + integral[0]
-        L1 = np.sum(np.abs(s - sTrue))
-        print(L1)
-        s = sTrue
+                (x[i + 1] - x[i] + (1 - 4 * t + 3 * t ** 2) * xp0 + (-2 * t + 3 * t ** 2) * xp1) ** 2
+                + (y[i + 1] - y[i] + (1 - 4 * t + 3 * t ** 2) * yp0 + (-2 * t + 3 * t ** 2) * yp1) ** 2)
+            sTrue[i + 1] = sTrue[i] + integrate.quad(f_i, 0.0, 1.0)[0]
 
-    fx = solveForCoeff(s, x, dxds)
-    fy = solveForCoeff(s, y, dyds)
-    return np.array([fx, fy, s], dtype=object)
+        L1 = np.sum(np.abs(s - sTrue))
+        s = sTrue.copy()
+
+    return np.array([solveForCoeff(s, x, dxds),
+                     solveForCoeff(s, y, dyds), s], dtype=object)
 
 
 def test():
-    s_i = np.linspace(0, 2, 200)
-    f = np.load('spline_main.npy', allow_pickle=True)
-    fx = f[0]
-    fy = f[1]
-    s = f[2]
-    sSym = sp.symbols('s')
-    output = np.array([[]])
-    for i in range(len(s) - 1):
-        fx_i = fx[i].subs(sSym, s[i] + (s[i + 1] - s[i]) / 2)
-        fy_i = fy[i].subs(sSym, s[i] + (s[i + 1] - s[i]) / 2)
-        if output.size == 0:
-            output = np.array([[fx_i, fy_i]])
-        else:
-            output = np.append(output, np.array([[fx_i, fy_i]]), axis=0)
-
-    plt.scatter(output[:, 0], output[:, 1])
+    """Plot segment midpoints of the main-element spline as a sanity check."""
+    sKnots, fx, fy, _, _ = _loadSpline(1)
+    mid = np.array([[fx[i](0.5 * (sKnots[i] + sKnots[i + 1])),
+                     fy[i](0.5 * (sKnots[i] + sKnots[i + 1]))]
+                    for i in range(len(fx))])
+    plt.plot(mid[:, 0], mid[:, 1], '.')
+    plt.axis('equal')
     plt.show()
-    # s = sp.symbols('s')
-    # f = solveForCoeff(np.array([0, 4]), np.array([1, 2]), np.array([1, 1]))
-    # y = f[0].subs(s, 3)
-    # print(y)
 
 
 def main():
-    maintxt = np.loadtxt('geometries/main.txt')
-    slat = np.loadtxt('geometries/slat.txt')
-    flap = np.loadtxt('geometries/flap.txt')
-    np.save('spline_main.npy', spline2d(maintxt))
-    np.save('spline_slat.npy', spline2d(slat))
-    np.save('spline_flap.npy', spline2d(flap))
+    for name, g in (('main', 1), ('slat', 3), ('flap', 2)):
+        pts = np.loadtxt(f'geometries/{name}.txt')
+        np.save(f'spline/spline_{name}.npy', spline2d(pts))
 
 
 if __name__ == "__main__":

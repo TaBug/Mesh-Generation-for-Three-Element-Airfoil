@@ -3,7 +3,7 @@ import numpy as np
 
 def txt2geo(maintxt, flap, slat):
     # Open the output .geo file
-    with open("all.geo", "w") as f:
+    with open("geo/all.geo", "w") as f:
         # Write the node coordinates to the .geo file
         for i, line in enumerate(maintxt):
             x = maintxt[i][0]
@@ -68,9 +68,9 @@ def txt2geo(maintxt, flap, slat):
 
 
 def main():
-    maintxt = np.loadtxt('Airfoil Geometries/main.txt')
-    slat = np.loadtxt('Airfoil Geometries/slat.txt')
-    flap = np.loadtxt('Airfoil Geometries/flap.txt')
+    maintxt = np.loadtxt('geometries/main.txt')
+    slat = np.loadtxt('geometries/slat.txt')
+    flap = np.loadtxt('geometries/flap.txt')
     txt2geo(maintxt, flap, slat)
 
 

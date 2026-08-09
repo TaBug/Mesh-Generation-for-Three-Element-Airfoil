@@ -1,102 +1,77 @@
 import numpy as np
-from matrices_generator import readgri, genGri, getI2E, getB2E, edgehash, area, getF2V
-from spline.spline import slapToBoundary
+
+from matrices_generator import readgri, genGri, edgeKey, faceNodes
+from spline.spline import AIRFOIL_GROUPS, snapToBoundary
 
 
 def uniformRefine(fnameInput, fnameOutput):
+    """Split every element into four sub-elements by bisecting all three edges.
+
+    New nodes are keyed on the edge they split, so the two elements sharing an
+    edge always agree on the midpoint node and the refined mesh stays
+    conforming. Midpoints of boundary edges on the curved airfoil surfaces are
+    projected onto the true spline geometry. Every edge is visited a constant
+    number of times, so the cost is O(N).
+    """
     mesh = readgri(fnameInput)
-    E = mesh['E']
-    V = mesh['V']
-    B = mesh['B']
-    B2E = getB2E(fnameInput, False)
-    Ecopy = E.copy()
-    Vcopy = V.copy()
-    Bcopy = B.copy()
+    V, E, B, Bname = mesh['V'], mesh['E'], mesh['B'], mesh['Bname']
 
-    for iElem in range(len(E)):
-        # find the boundary face index
-        ib = np.where(B2E[:, 0] == iElem + 1)
+    # boundary edge -> group index, so new nodes on the airfoil can be snapped
+    groupOf = {}
+    for g, bGroup in enumerate(B, start=1):
+        for edge in bGroup:
+            groupOf[edgeKey(edge[0], edge[1])] = g
 
-        # find the node indicis
-        node1 = E[iElem][0]
-        node2 = E[iElem][1]
-        node3 = E[iElem][2]
+    Vnew = [row.copy() for row in V]
+    midOf = {}
 
-        # create new nodes
-        node1NewC = np.array(
-            [[(V[node2 - 1][0] + V[node3 - 1][0]) / 2, (V[node2 - 1][1] + V[node3 - 1][1]) / 2]])
-        node2NewC = np.array(
-            [[(V[node1 - 1][0] + V[node3 - 1][0]) / 2, (V[node1 - 1][1] + V[node3 - 1][1]) / 2]])
-        node3NewC = np.array(
-            [[(V[node1 - 1][0] + V[node2 - 1][0]) / 2, (V[node1 - 1][1] + V[node2 - 1][1]) / 2]])
+    def midpoint(a, b):
+        """Node index (1-based) of the midpoint of edge (a, b), created once."""
+        k = edgeKey(a, b)
+        if k in midOf:
+            return midOf[k]
 
-        # if there is a boundary face
-        if ib[0].size != 0 and 1 <= B2E[ib[0][0]][2] <= 3:
-            iNodeB = B2E[ib[0][0]][1]
-            bgroup = B2E[ib[0][0]][2]
-            nodeBC = slapToBoundary(B, bgroup, ib)
-            if iNodeB == 1:
-                node1NewC = nodeBC
-            elif iNodeB == 2:
-                node2NewC = nodeBC
-            else:
-                node3NewC = nodeBC
+        coord = 0.5 * (V[k[0] - 1] + V[k[1] - 1])
+        g = groupOf.get(k)
+        if g in AIRFOIL_GROUPS:
+            coord = snapToBoundary(coord, g)
 
-        # check if the nodes have been seen
-        where1 = np.where(Vcopy == node1NewC)[0]
-        where2 = np.where(Vcopy == node2NewC)[0]
-        where3 = np.where(Vcopy == node3NewC)[0]
+        Vnew.append(np.asarray(coord, dtype=float))
+        midOf[k] = len(Vnew)
+        return midOf[k]
 
-        if where1.size == 0:
-            Vcopy = np.append(Vcopy, node1NewC, axis=0)
-            node1New = len(Vcopy)
-        else:
-            node1New = where1[0] + 1
-        if where2.size == 0:
-            Vcopy = np.append(Vcopy, node2NewC, axis=0)
-            node2New = len(Vcopy)
-        else:
-            node2New = where2[0] + 1
-        if where3.size == 0:
-            Vcopy = np.append(Vcopy, node3NewC, axis=0)
-            node3New = len(Vcopy)
-        else:
-            node3New = where3[0] + 1
+    # M[i] is the midpoint of local face i+1, which is opposite local node i
+    Enew = []
+    for elem in E:
+        n0, n1, n2 = int(elem[0]), int(elem[1]), int(elem[2])
+        M = [midpoint(*faceNodes(elem, f)) for f in (1, 2, 3)]
+        Enew.append([n0, M[2], M[1]])
+        Enew.append([n1, M[0], M[2]])
+        Enew.append([n2, M[1], M[0]])
+        Enew.append([M[0], M[1], M[2]])
 
-        # add new boundaries
-        if ib[0].size != 0:
-            iNodeB = B2E[ib[0][0]][1]
-            bgroup = B2E[ib[0][0]][2]
-            if iNodeB == 1:
-                newB1 = np.array([[node2, node1New]])
-                newB2 = np.array([[node1New, node3]])
-            elif iNodeB == 2:
-                newB1 = np.array([[node3, node2New]])
-                newB2 = np.array([[node2New, node1]])
-            else:
-                newB1 = np.array([[node1, node3New]])
-                newB2 = np.array([[node3New, node2]])
+    # every boundary edge belongs to a refined element, so each one is bisected
+    Bnew = []
+    for bGroup in B:
+        edges = []
+        for edge in bGroup:
+            a, b = int(edge[0]), int(edge[1])
+            m = midOf[edgeKey(a, b)]
+            edges.append([a, m])
+            edges.append([m, b])
+        Bnew.append(np.array(edges, dtype=int))
 
-            bIndex = ib[0][0] - sum(len(B[i]) for i in range(bgroup - 1))
-            Bcopy[bgroup - 1] = np.append(Bcopy[bgroup - 1], newB1, axis=0)
-            Bcopy[bgroup - 1][bIndex] = newB2
-
-        # create new elements
-        elemNew1 = np.array([[node1New, node3, node2New]])
-        elemNew2 = np.array([[node2New, node1, node3New]])
-        elemNew3 = np.array([[node3New, node2, node1New]])
-        elemNew4 = np.array([[node1New, node2New, node3New]])
-
-        # add to the new E matrix
-        Ecopy = np.append(Ecopy, elemNew1, axis=0)
-        Ecopy = np.append(Ecopy, elemNew2, axis=0)
-        Ecopy = np.append(Ecopy, elemNew3, axis=0)
-        Ecopy[iElem] = elemNew4
-    genGri(fnameOutput, Vcopy, Ecopy, Bcopy)
+    genGri(fnameOutput, np.array(Vnew, dtype=float),
+           np.array(Enew, dtype=int), Bnew, Bname)
 
 
 def main():
-    uniformRefine('gri/smoothed_local_all.gri', 'gri/refined_uniform_all.gri')
+    """Generate the ~8k, ~32k, and ~128k refinements of the locally-refined mesh."""
+    fname = 'gri/smoothed_local_all.gri'
+    for label in ('8k', '32k', '128k'):
+        fnameOutput = f'gri/refinement_uniform_all_{label}.gri'
+        uniformRefine(fname, fnameOutput)
+        fname = fnameOutput
 
 
 if __name__ == "__main__":

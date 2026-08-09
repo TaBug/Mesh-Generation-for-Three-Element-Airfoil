@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c ' *)",
+      "Bash(cp /c/Users/david/AppData/Local/Temp/all_regen.gri gri/all.gri)",
+      "Bash(python refinement_local.py)",
+      "Bash(python -)"
+    ]
+  }
+}
