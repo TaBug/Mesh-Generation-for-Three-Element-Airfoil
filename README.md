@@ -137,6 +137,7 @@ nodes. Measured timings scale ~4× per 4× elements.
 | `main.py` | Drives geometry → `.geo` → `.gri` |
 | `txt2geo.py` | Airfoil points → Gmsh `.geo` |
 | `msh2gri.py` | Gmsh `.msh` → `.gri` |
+| `gri2msh.py` | `.gri` → Gmsh `.msh` (format 4.1 or 2.2) |
 | `matrices_generator.py` | `.gri` I/O, `I2E`/`B2E`/`In`/`Bn`/`Area`, verification |
 | `mesh_verification.py` | Verification table across all meshes |
 | `refinement_local.py` | Flagged-region refinement with smoothing |
